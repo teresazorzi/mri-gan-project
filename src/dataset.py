@@ -11,8 +11,8 @@ class MRINiftiDataset(Dataset):
     """
     Custom Dataset for loading 3D MRI Nifti files.
     
-    This dataset scans a directory for Nifti files, normalizes them,
-    and optionally applies lightweight data augmentation (rotation/shift).
+    This dataset scans a directory for Nifti files, normalizes them to [-1, 1],
+    and resizes them to the target shape.
     """
 
     def __init__(self, class_dir, label, target_shape=(64, 64, 64), augment=False):
@@ -21,15 +21,12 @@ class MRINiftiDataset(Dataset):
             class_dir (str): Path to the folder containing the specific class images.
             label (int): Integer label associated with this class.
             target_shape (tuple): Desired output shape (Depth, Height, Width).
-            augment (bool): If True, applies random rotation and shift to the data.
         """
         self.label = label
         self.target_shape = target_shape
-        self.augment = augment 
         
         # Search for specific Nifti files recursively
-        # Ideally, the specific filename pattern should also be a parameter, 
-        # but we keep it here for simplicity based on the original project.
+        # Pattern: looks for 'MPRAGE_MNI_norm.nii.gz' inside subfolders
         self.file_list = glob.glob(os.path.join(class_dir, "**", "MPRAGE_MNI_norm.nii.gz"), recursive=True)
         
         if len(self.file_list) == 0:
@@ -49,26 +46,17 @@ class MRINiftiDataset(Dataset):
             mi, ma = data.min(), data.max()
             data = (data - mi) / (ma - mi + 1e-8)
 
-            # --- LIGHTWEIGHT AUGMENTATION ---
-            if self.augment:
-                # 1. Subtle rotation (+/- 1 degree)
-                angle = np.random.uniform(-1, 1)
-                axes = np.random.choice([(0,1), (0,2), (1,2)]) 
-                data = ndimage.rotate(data, angle, axes=axes, reshape=False, order=1, mode='constant', cval=0.0)
-                
-                # 2. Small random shift
-                shift_x = np.random.randint(-2, 3) 
-                shift_y = np.random.randint(-2, 3)
-                shift_z = np.random.randint(-2, 3)
-                data = ndimage.shift(data, shift=[shift_x, shift_y, shift_z], order=1, mode='constant', cval=0.0)
-
             # Rescale to [-1, 1] for GAN stability (Tanh activation in Generator)
             data = (data * 2) - 1
             
-            # Convert to Tensor and resize
+            # Convert to Tensor (Add Channel and Batch dimensions for interpolation)
+            # Input to interpolate must be (Batch, Channel, D, H, W)
             tensor = torch.from_numpy(data).unsqueeze(0).unsqueeze(0) 
-            tensor = F.interpolate(tensor, size=self.target_shape, mode='trilinear', align_corners=False)
             
+            # Resize to target shape
+            tensor = F.interpolate(tensor, size=self.target_shape, mode='trilinear', align_corners=False)
+
+            # Return tensor: remove Batch dim -> (Channel, D, H, W)
             return tensor.squeeze(0), torch.tensor(self.label, dtype=torch.long)
             
         except Exception as e:
