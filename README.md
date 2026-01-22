@@ -16,6 +16,7 @@ The model is designed to work with **T1-weighted MPRAGE** sequences (originally 
 **Important:** The input data must be pre-processed using the specific pipeline described below to ensure convergence.
 
 ### Preprocessing Pipeline
+
 All training images must undergo the following standardized workflow before being used:
 
 1. **Format Conversion:** DICOM to NIfTI (`.nii.gz`) conversion.
@@ -29,6 +30,7 @@ All training images must undergo the following standardized workflow before bein
     - Background voxels (outside the brain mask) are explicitly set to **-1**.
 
 ### Directory Structure
+
 To train the model, organize your pre-processed data (`MPRAGE_MNI_norm.nii.gz`) as follows:
 
 ```text
@@ -47,31 +49,36 @@ To train the model, organize your pre-processed data (`MPRAGE_MNI_norm.nii.gz`) 
         │   └── MPRAGE_MNI_norm.nii.gz
         └── ...
 ```
+
 ## Installation
 
 1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/YOUR_USERNAME/mri-gan-project.git](https://github.com/YOUR_USERNAME/mri-gan-project.git)
-   cd mri-gan-project 
-   ```
+
+```bash
+git clone https://github.com/YOUR_USERNAME/mri-gan-project.git
+cd mri-gan-project
+```
 
 2. **Install dependencies:** It is recommended to use a virtual environment.
 
-    ```bash
-    pip install -r requirements.txt 
-    ```
+```bash
+pip install -r requirements.txt
+```
 
 ## Usage
+
 The project provides a Command Line Interface (CLI) for easy execution without modifying the source code.
 
-**Training the Model**
-    Run the training loop specifying the path to your data folder:
+### Training the Model
 
-    ```bash
-    python main.py --data_root ./data --epochs 100 --batch_size 4  
-    ```
+Run the training loop specifying the path to your data folder:
 
-**Available Arguments:**
+```bash
+python main.py --data_root ./data --epochs 100 --batch_size 4
+```
+
+### Available Arguments
+
 - `--data_root`: (Required) Path to the directory containing class subfolders.
 - `--output_dir`: Directory to save checkpoints and images (default: `./results`).
 - `--epochs`: Number of training epochs (default: `100`).
@@ -79,31 +86,33 @@ The project provides a Command Line Interface (CLI) for easy execution without m
 - `--lr`: Learning rate (default: `0.0002`).
 - `--device`: Force usage of `cuda` or `cpu` (default: auto-detect).
 
-**Output**
-    During training, the software will generate:
+### Output
 
-    - Checkpoints: Saved models in results/checkpoints/.
+During training, the software will generate:
 
-    - Progress Images: PNG slices of generated brains in results/progress_images/ for visual monitoring.
-
-    - History: A CSV file (training_history.csv) tracking Generator and Discriminator loss.
+- Checkpoints: Saved models in results/checkpoints/.
+- Progress Images: PNG slices of generated brains in results/progress_images/ for visual monitoring.
+- History: A CSV file (training_history.csv) tracking Generator and Discriminator loss.
 
 ## Testing
-This project includes a suite of unit tests to verify the architecture integrity before training. To run the tests:
+
+This project includes a suite of unit tests to verify the architecture integrity before training.
+
+To run the tests:
 
 ```bash
 pytest tests/
 ```
+
 ## Project Structure
+
 - `src/`: Core source code (Dataset loader, Models, Trainer).
-
 - `data/`: Placeholder folder for your local dataset (ignored by Git).
-
 - `tests/`: Unit tests for continuous integration.
-
 - `main.py`: Entry point for the CLI.
 
 ## License
+
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 Disclaimer: This software is for research and educational purposes only. Not intended for clinical use.
