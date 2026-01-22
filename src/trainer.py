@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+'''
+Author: Teresa Zorzi
+Date: January 2026
+'''
+
 import os
 import time
 import pandas as pd

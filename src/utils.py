@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+'''
+Author: Teresa Zorzi
+Date: January 2026
+'''
+
 import torch
 import torch.autograd as autograd
 import matplotlib.pyplot as plt
