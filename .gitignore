@@ -205,3 +205,33 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- CUSTOM RULES FOR MRI GAN ---
+
+# 1. Block Medical Data (Privacy & Size)
+*.nii
+*.nii.gz
+*.dcm
+*.dicom
+
+# 2. Block Model Checkpoints (Too big for GitHub)
+*.pth
+*.pt
+*.ckpt
+
+# 3. Block Output Folders
+results/
+outputs/
+progress_images/
+checkpoints/
+logs/
+
+# 4. Block local config files (if any)
+config_local.json
+
+# 5. OS specific
+Thumbs.db
+.DS_Store
+
+# 6. Ensure we ignore the specific folder from your hard drive if copied accidentally
+PATTERN/
