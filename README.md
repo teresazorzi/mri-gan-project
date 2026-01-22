@@ -51,11 +51,11 @@ To train the model, organize your pre-processed data (`MPRAGE_MNI_norm.nii.gz`) 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/mri-gan-project.git
+   git clone [https://github.com/YOUR_USERNAME/mri-gan-project.git](https://github.com/YOUR_USERNAME/mri-gan-project.git)
    cd mri-gan-project 
    ```
 
-2. **Install dependencies: It is recommended to use a virtual environment.**
+2. **Install dependencies:** It is recommended to use a virtual environment.
 
     ```bash
     pip install -r requirements.txt 
@@ -65,11 +65,11 @@ To train the model, organize your pre-processed data (`MPRAGE_MNI_norm.nii.gz`) 
 The project provides a Command Line Interface (CLI) for easy execution without modifying the source code.
 
 **Training the Model**
-Run the training loop specifying the path to your data folder:
+    Run the training loop specifying the path to your data folder:
 
-```bash
-python main.py --data_root ./data --epochs 100 --batch_size 4  
-```
+    ```bash
+    python main.py --data_root ./data --epochs 100 --batch_size 4  
+    ```
 
 **Available Arguments:**
 - `--data_root`: (Required) Path to the directory containing class subfolders.
@@ -80,13 +80,13 @@ python main.py --data_root ./data --epochs 100 --batch_size 4
 - `--device`: Force usage of `cuda` or `cpu` (default: auto-detect).
 
 **Output**
-During training, the software will generate:
+    During training, the software will generate:
 
-- Checkpoints: Saved models in results/checkpoints/.
+    - Checkpoints: Saved models in results/checkpoints/.
 
-- Progress Images: PNG slices of generated brains in results/progress_images/ for visual monitoring.
+    - Progress Images: PNG slices of generated brains in results/progress_images/ for visual monitoring.
 
-- History: A CSV file (training_history.csv) tracking Generator and Discriminator loss.
+    - History: A CSV file (training_history.csv) tracking Generator and Discriminator loss.
 
 ## Testing
 This project includes a suite of unit tests to verify the architecture integrity before training. To run the tests:
