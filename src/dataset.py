@@ -19,24 +19,31 @@ class MRINiftiDataset(Dataset):
     
     This dataset scans a directory for Nifti files, normalizes them to [-1, 1],
     and resizes them to the target shape.
+    It supports diverse 3D imaging protocols (e.g., T1, T2, PET), assuming 
+    the input data is spatially registered
     """
 
-    def __init__(self, class_dir, label, target_shape=(64, 64, 64), augment=False):
+    def __init__(self, class_dir, label, target_shape=(64, 64, 64),file_pattern="MPRAGE_MNI_norm.nii.gz"):
         """
         Args:
             class_dir (str): Path to the folder containing the specific class images.
             label (int): Integer label associated with this class.
             target_shape (tuple): Desired output shape (Depth, Height, Width).
+            file_pattern (str): Filename pattern to search for (default: 'MPRAGE_MNI_norm.nii.gz').
+                                Can be changed to '*.nii' or specific filenames for other datasets.
         """
+        if not os.path.exists(class_dir):
+            raise FileNotFoundError(f"The directory '{class_dir}' does not exist. Please check the path.")
+        
         self.label = label
         self.target_shape = target_shape
         
         # Search for specific Nifti files recursively
-        # Pattern: looks for 'MPRAGE_MNI_norm.nii.gz' inside subfolders
-        self.file_list = glob.glob(os.path.join(class_dir, "**", "MPRAGE_MNI_norm.nii.gz"), recursive=True)
+        # This allows reusability for other datasets/modalities.
+        self.file_list = glob.glob(os.path.join(class_dir, "**", file_pattern), recursive=True)
         
         if len(self.file_list) == 0:
-            print(f"Warning: No files found in {class_dir}")
+            print(f"Warning: No files matching '{file_pattern}' found in {class_dir}")
 
     def __len__(self):
         return len(self.file_list)
@@ -50,7 +57,13 @@ class MRINiftiDataset(Dataset):
             
             # Robust Normalization to [0, 1]
             mi, ma = data.min(), data.max()
-            data = (data - mi) / (ma - mi + 1e-8)
+
+            # Safety check for flat images (division by zero protection)
+            if ma - mi > 1e-8:
+                data = (data - mi) / (ma - mi + 1e-8)
+            else:
+                # Handle corrupted/empty scans safely
+                data = np.zeros_like(data)
 
             # Rescale to [-1, 1] for GAN stability (Tanh activation in Generator)
             data = (data * 2) - 1
