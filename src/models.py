@@ -19,6 +19,7 @@ def weights_init(m):
     elif classname.find('InstanceNorm') != -1:
         if m.weight is not None: 
             nn.init.normal_(m.weight.data, 1.0, 0.02)
+            nn.init.constant_(m.bias.data, 0)
 
 class CPUOptimizedGenerator3D(nn.Module):
     """
@@ -55,6 +56,13 @@ class CPUOptimizedGenerator3D(nn.Module):
         )
 
     def forward(self, z, labels):
+        # Validate input dimensions
+        if z.dim() != 2:
+            raise ValueError(f"Generator input 'z' must be 2D (Batch, Latent), got shape {z.shape}")
+        
+        if labels.dim() != 1:
+            raise ValueError(f"Generator input 'labels' must be 1D (Batch,), got shape {labels.shape}")
+
         emb = self.label_embedding(labels)
         # Concatenate noise and label embedding
         x = torch.cat([z, emb], dim=1).view(-1, self.latent_dim + self.latent_dim // 2, 1, 1, 1)
@@ -91,7 +99,18 @@ class CPUOptimizedDiscriminator3D(nn.Module):
         )
 
     def forward(self, x, labels):
+        # x must be (Batch, Channel, D, H, W) -> 5 dimensions
+        if x.dim() != 5:
+            raise ValueError(f"Discriminator input image must be 5D (Batch, Channel, D, H, W), got shape {x.shape}")
+        
+        if labels.dim() != 1:
+            raise ValueError(f"Discriminator input 'labels' must be 1D (Batch,), got shape {labels.shape}")
+
         emb = self.label_embedding(labels)
         # Project embedding to match image size and concatenate as a new channel
         lp = self.label_proj(emb).view(-1, 1, *self.input_shape)
-        return self.main(torch.cat([x, lp], dim=1)).view(-1)
+        
+        # Concatenate along channel dimension (dim=1)
+        combined_input = torch.cat([x, lp], dim=1)
+        
+        return self.main(combined_input).view(-1)
