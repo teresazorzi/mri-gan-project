@@ -103,10 +103,10 @@ def main():
             raise RuntimeError(f"No files found matching '{args.file_pattern}' in {args.data_root}. "
                                f"Please check your data directory structure.")
             
-        print(f"✅ Total images found: {len(full_dataset)}")
+        print(f"Total images found: {len(full_dataset)}")
         
     except FileNotFoundError as e:
-        print(f"❌ CRITICAL ERROR: {e}")
+        print(f"CRITICAL ERROR: {e}")
         return # Exit cleanly
 
     dataloader = DataLoader(
