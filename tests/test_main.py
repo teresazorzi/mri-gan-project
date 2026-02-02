@@ -8,17 +8,24 @@ import sys
 import os
 import pytest
 import subprocess
-import shutil
 import numpy as np
 import nibabel as nib
 
-# --- FIXTURES FOR TEMPORARY DATA ---
 
 @pytest.fixture
 def temp_data_structure(tmp_path):
     """
-    Creates a temporary valid dataset structure (AD, CN, LMCI) 
-    so main.py has something to load.
+    Create a temporary valid dataset structure (AD, CN, LMCI) for integration testing.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Pytest fixture providing a temporary directory unique to the test invocation.
+
+    Returns
+    -------
+    str
+        The absolute path to the temporary data root directory.
     """
     root_dir = tmp_path / "data"
     root_dir.mkdir()
@@ -27,64 +34,72 @@ def temp_data_structure(tmp_path):
     for cls in classes:
         cls_dir = root_dir / cls
         cls_dir.mkdir()
-        # Create one fake patient with one fake image
+        
         patient_dir = cls_dir / "Patient_001"
         patient_dir.mkdir()
         
-        # Create fake 64x64x64 nifti (random noise)
+        # Create a fake 64x64x64 Nifti image (random noise)
         data = np.random.rand(64, 64, 64).astype(np.float32)
-        # Nifti header identity matrix
         img = nib.Nifti1Image(data, np.eye(4))
-        # Save as .nii.gz
         nib.save(img, patient_dir / "mri.nii.gz")
         
     return str(root_dir)
 
-# --- TEST CASE ---
 
-def test_main_execution_cli(temp_data_structure):
+def test_main_execution_cli(temp_data_structure, tmp_path):
     """
-    GIVEN a valid dataset path
-    WHEN we run 'python main.py' via command line with minimal arguments
-    THEN it should execute without errors (exit code 0).
-    """
+    Test the full execution of main.py via Command Line Interface (CLI).
     
-    # 1. Locate main.py
+    This verifies that the script runs from start to finish (exit code 0)
+    given valid arguments, effectively acting as an integration test.
+
+    Parameters
+    ----------
+    temp_data_structure : str
+        Path to the temporary data root created by the fixture.
+    tmp_path : pathlib.Path
+        Pytest fixture for creating temporary output directories.
+    """
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(current_dir, '..'))
     main_script = os.path.join(project_root, 'main.py')
     
-    # Verify main.py exists
     if not os.path.exists(main_script):
         pytest.fail(f"Could not find main.py at {main_script}")
 
-    # 2. Build the command
+    temp_output_dir = tmp_path / "test_results"
+
+    # We use sys.executable to ensure we use the same Python environment 
+    # currently running the tests (avoids venv mismatch).
     cmd = [
         sys.executable, main_script,
         "--data_root", temp_data_structure,
+        "--save_dir", str(temp_output_dir),
         "--file_pattern", "mri.nii.gz", 
         "--epochs", "1",           
         "--batch_size", "2",       
         "--n_critic", "1",         
         "--lr", "0.001",
-        "--latent_dim", "10"
+        "--latent_dim", "10",
+        "--device", "cpu",         # Force CPU to ensure stability in CI environments without GPUs
+        "--num_workers", "0"       # Avoids multiprocessing overhead/freezing on Windows
     ]
     
     print(f"Executing command: {' '.join(cmd)}")
     
-    # 3. Run the process
     result = subprocess.run(
         cmd, 
         capture_output=True, 
         text=True
     )
     
-    # 4. Debugging Output (Only shows if test fails)
     if result.returncode != 0:
         print("\n--- STDOUT (Logs) ---")
         print(result.stdout)
         print("\n--- STDERR (Errors) ---")
         print(result.stderr)
         
-    # 5. Assert Success
     assert result.returncode == 0, "main.py crashed! See STDERR above for details."
+    
+    # Verify that the script actually produced output, not just exited silently.
+    assert os.path.exists(temp_output_dir), "Output directory was not created."
