@@ -45,12 +45,10 @@ The project focuses on generating synthetic data for different stages of Alzheim
 
 Main requirements include:
 - `torch` (PyTorch)
-- `numpy`
-- `nibabel` (Medical image processing)
-- `pandas`
-- `scikit-image`
-- `matplotlib`
-- `pytest` (for testing)
+- `numpy` (Locked < 2.0 for compatibility)
+- `nibabel` (Medical image IO)
+- `matplotlib` (Visualization)
+- `pytest` (Testing suite)
 
 ## Dataset & Preprocessing
 
@@ -95,12 +93,11 @@ This repository contains the following folders and files:
   - `dataset.py`: Handles loading and preprocessing of 3D NIfTI MRI volumes.
   - `models.py`: Defines the Generator and Discriminator neural network architectures.
   - `trainer.py`: Implements the training loop, loss calculation, and backpropagation.
-  - `utils.py`: Utility functions for saving checkpoints and visualizing 3D slices.
+  - `utils.py`: Utility functions for Gradient Penalty calculation and visualization of 3D orthogonal slices.
 - **`notebooks/`**: Contains interactive Jupyter Notebooks (e.g., `demo_generation.ipynb`) for visualization.
 - **`tests/`**: Contains unit tests to verify model shapes and data loading logic.
 - **`results/`**: Destination folder for generated images, logs, and saved models (created automatically).
 - **`main.py`**: Main script for launching the training process via command line.
-- **`demo.py`**: Quick script to generate and visualize a synthetic brain sample.
 - **`requirements.txt`**: Contains the list of dependencies required for the project.
 
 ## Scripts Overview
@@ -134,38 +131,35 @@ python main.py --data_root "./data"
 **Advanced Configuration:**
 ```bash
 python main.py \
-  --data_root "./data" \
+  --data_root "data" \
   --file_pattern "mri.nii.gz" \
-  --epochs 200 \
+  --epochs 50 \
   --batch_size 4 \
   --lr 0.0002 \
-  --n_critic 5
+  --n_critic 5 \
+  --save_dir "results" \
+  --latent_dim 64 \
+  --device "cuda"
 ```
 
 **Available Arguments:**
 | Argument | Description | Default |
 | :--- | :--- | :--- |
-| `--data_root` | Path to the dataset root folder (must contain AD/CN/LMCI subfolders) | **Required** |
-| `--output_dir` | Directory where results and checkpoints will be saved | `./results` |
+| `--data_root` | Path to the dataset root folder (must contain AD/CN/LMCI subfolders) | `data` |
+| `--save_dir` | Directory where results and checkpoints will be saved | `results` |
 | `--file_pattern`| Specific filename to search for (e.g., `mri.nii.gz`) | `MPRAGE_MNI_norm.nii.gz` |
-| `--epochs` | Total number of training epochs | `100` |
+| `--epochs` | Total number of training epochs | `50` |
 | `--batch_size` | Number of volumes per batch (reduce if OOM error occurs) | `4` |
 | `--lr` | Learning rate for the optimizer | `0.0002` |
 | `--n_critic` | Number of Critic (Discriminator) updates per Generator update | `5` |
-| `--latent_dim` | Size of the latent noise vector (z) | `100` |
-| `--device` | Computation device (`cpu` or `cuda`) | `cpu` |
+| `--latent_dim` | Size of the latent noise vector (z) | `64` |
+| `--device` | Computation device (`cpu` or `cuda`) | `cuda (auto-detected)` |
 
 ### 2️⃣ Demo & Visualization
 
 You can generate synthetic brains using the trained model without running a full training loop.
 
-**Option A: Quick Script** Run the demo script to generate a batch of images and see 3D slices (Axial, Sagittal, Coronal).
-
-```bash
-python demo.py
-```
-
-**Option B: Interactive Notebook** For a more interactive experience, open the Jupyter Notebook:
+**Interactive Notebook** For a more interactive experience, open the Jupyter Notebook:
 
 1. Navigate to notebooks/
 
@@ -174,11 +168,11 @@ python demo.py
 3. Run the cells to load the latest checkpoint and visualize the output.
 
 ### 3️⃣ Training Outputs
-During training, the software will automatically generate inside the `results/` folder:
+During training, the software will automatically generate inside the directory specified by`--save_dir` (default: `results`):
 
-- **Checkpoints**: Saved models (`.pth` files) in `results/checkpoints/`
+- **Checkpoints**: Saved models (`.pth` files) in `checkpoints/` inside the specified save directory.
 
-- **Progress Images**: PNG slices of generated brains in `results/progress_images/` for visual monitoring.
+- **Progress Images**: PNG slices of generated brains in `progress_images/`, inside the specified save directory, for visual monitoring.
 
 ## Testing
 
@@ -193,7 +187,7 @@ pytest tests/
 
 To check how much code is covered by tests (requires `pytest-cov`):
 ```bash
-pytest --cov=src tests/
+pytest --cov=src --cov-report=term-missing tests/
 ```
 
 ## License
