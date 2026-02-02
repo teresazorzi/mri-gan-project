@@ -94,3 +94,28 @@ def test_getitem_output_shape(mock_dataset_folder):
     image, label = dataset[0]
     # Check dimensions: (Channels, Depth, Height, Width)
     assert image.shape == (1, 64, 64, 64)
+
+def test_automatic_resizing(tmp_path):
+    """
+    GIVEN a dataset configured for 64x64x64
+    WHEN loading a huge image (e.g., 100x100x100)
+    THEN it should automatically resize it to (1, 64, 64, 64).
+    """
+    # 1. Setup cartella e file gigante
+    d = tmp_path / "ResizeTest"
+    d.mkdir()
+    p = d / "Patient_Big"
+    p.mkdir()
+    
+    # Creiamo un'immagine di dimensioni sbagliate (es. 100x100x100)
+    huge_data = np.random.rand(100, 100, 100).astype(np.float32)
+    img = nib.Nifti1Image(huge_data, np.eye(4))
+    nib.save(img, p / "MPRAGE_MNI_norm.nii.gz")
+    
+    # 2. Inizializza Dataset
+    dataset = MRINiftiDataset(class_dir=str(d), label=0, target_shape=(64, 64, 64))
+    
+    # 3. Verifica
+    image, _ = dataset[0]
+    # Se il ridimensionamento funziona, la shape deve essere 64, non 100!
+    assert image.shape == (1, 64, 64, 64)
