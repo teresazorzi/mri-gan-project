@@ -38,7 +38,7 @@ def mock_dataset_folder(tmp_path):
 
 @pytest.fixture
 def custom_file_folder(tmp_path):
-    """Creates a folder with weird filenames to test the 'file_pattern' flexibility."""
+    """Creates a folder with different filenames to test the 'file_pattern' flexibility."""
     d = tmp_path / "T2_Images"
     d.mkdir()
     p = d / "Scan_01"
@@ -67,7 +67,7 @@ def test_custom_file_pattern(custom_file_folder):
     GIVEN a folder with non-standard filenames (e.g. 'brain_t2.nii')
     WHEN initialized with file_pattern='brain_t2.nii'
     THEN it should find the files correctly.
-    (This proves the code is modality-agnostic!)
+    (This proves the code is modality-agnostic)
     """
     dataset = MRINiftiDataset(class_dir=custom_file_folder, label=1, file_pattern="brain_t2.nii")
     assert len(dataset) == 1

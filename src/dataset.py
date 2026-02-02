@@ -79,6 +79,5 @@ class MRINiftiDataset(Dataset):
             return tensor.squeeze(0), torch.tensor(self.label, dtype=torch.long)
             
         except Exception as e:
-            # In production/exams, it is better to log the error rather than silently returning zeros
             print(f"Error loading file {self.file_list[idx]}: {e}")
             return torch.zeros((1, *self.target_shape)), torch.tensor(self.label, dtype=torch.long)
