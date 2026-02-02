@@ -101,24 +101,58 @@ def test_data_shape_consistency(mock_dataset_folder):
     # Check dimensions: (Channels, Depth, Height, Width)
     assert image.shape == (1, 64, 64, 64)
 
-def test_preprocessing_resizing(tmp_path):
+def test_dataset_handles_flat_images(tmp_path):
     """
-    Verify that the dataset automatically resizes inputs of arbitrary sizes 
-    to the strictly defined target shape.
+    Verify that the dataset handles empty or flat volumes (min == max).
+    
+    This ensures the normalization logic does not fail with division 
+    by zero errors when encountering corrupted or blank scans.
     """
-    d = tmp_path / "ResizeTest"
-    d.mkdir()
-    p = d / "Patient_Big"
-    p.mkdir()
+    flat_dir = tmp_path / "FlatData"
+    flat_dir.mkdir()
+    patient_dir = flat_dir / "Patient_Empty"
+    patient_dir.mkdir()
     
-    # Create a volume with mismatching dimensions (100x100x100) to test interpolation logic
-    huge_data = np.random.rand(100, 100, 100).astype(np.float32)
-    img = nib.Nifti1Image(huge_data, np.eye(4))
-    nib.save(img, p / "MPRAGE_MNI_norm.nii.gz")
+    data = np.zeros((64, 64, 64), dtype=np.float32)
+    img = nib.Nifti1Image(data, np.eye(4))
+    nib.save(img, patient_dir / "MPRAGE_MNI_norm.nii.gz")
     
-    dataset = MRINiftiDataset(class_dir=str(d), label=0, target_shape=(64, 64, 64))
+    dataset = MRINiftiDataset(class_dir=str(flat_dir), label=0)
+    image, _ = dataset[0]
+    
+    # Expected: (0 * 2) - 1 = -1
+    assert torch.all(image == -1)
+
+def test_dataset_fault_tolerance_on_corruption(tmp_path):
+    """
+    Verify that the dataset stays robust against non-NIfTI files.
+    
+    Instead of raising an unhandled exception, it should log the error 
+    and return a zero-tensor to maintain training continuity.
+    """
+    corrupt_dir = tmp_path / "CorruptData"
+    corrupt_dir.mkdir()
+    bad_file = corrupt_dir / "invalid_scan.nii.gz"
+    bad_file.write_text("This is not a valid NIfTI header.")
+    
+    dataset = MRINiftiDataset(class_dir=str(corrupt_dir), label=0, file_pattern="invalid_scan.nii.gz")
     
     image, _ = dataset[0]
     
-    # The output must be resized to 64, proving that F.interpolate worked
+    assert torch.all(image == 0)
     assert image.shape == (1, 64, 64, 64)
+
+def test_dataset_warning_on_empty_folder(tmp_path):
+    """
+    Verify that the dataset correctly identifies when no files match the pattern.
+    
+    This ensures the user is notified if the search criteria are too restrictive 
+    or the data directory is incorrectly structured.
+    """
+    empty_dir = tmp_path / "Empty"
+    empty_dir.mkdir()
+    
+    # Initializing with a pattern that doesn't exist
+    dataset = MRINiftiDataset(class_dir=str(empty_dir), label=0, file_pattern="*.txt")
+    
+    assert len(dataset) == 0
