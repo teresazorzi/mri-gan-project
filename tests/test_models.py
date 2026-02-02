@@ -8,12 +8,14 @@ import sys
 import os
 import pytest
 import torch
+import torch.nn as nn
 
 # Add the project root directory to Python's search path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.models import CPUOptimizedGenerator3D, CPUOptimizedDiscriminator3D, weights_init
 
+# --- INITIALIZATION TESTS ---
 
 def test_weights_initialization_logic():
     """
@@ -26,7 +28,7 @@ def test_weights_initialization_logic():
     model.apply(weights_init)
     
     for m in model.modules():
-        if isinstance(m, torch.nn.ConvTranspose3d):
+        if isinstance(m, nn.ConvTranspose3d):
             # DCGAN standard: weights must follow N(0, 0.02)
             assert torch.isclose(m.weight.std(), torch.tensor(0.02), atol=1e-2)
             break
@@ -34,27 +36,16 @@ def test_weights_initialization_logic():
 def test_weights_init_with_bias():
     """
     Ensure weights_init correctly zeroes out biases when present.
+    
+    This validates the logic for potential architecture variants where bias 
+    terms are enabled, ensuring a neutral starting point for optimization.
     """
-    layer = torch.nn.Conv3d(1, 1, 3, bias=True)
+    layer = nn.Conv3d(1, 1, 3, bias=True)
     layer.bias.data.fill_(5.0)
     weights_init(layer)
     assert torch.all(layer.bias == 0)
-        
-# --- TEST GENERATOR ---
 
-def test_generator_input_validation():
-    """
-    Verify that the Generator enforces strict input dimensionality.
-    
-    This defensive check prevents obscure matrix multiplication errors 
-    further down the PyTorch computational graph.
-    """
-    gen = CPUOptimizedGenerator3D(latent_dim=64)
-    z_bad = torch.randn(1, 64, 1, 1) 
-    labels = torch.tensor([0])
-    
-    with pytest.raises(ValueError, match="Generator input 'z' must be 2D"):
-        gen(z_bad, labels)
+# --- GENERATOR TESTS ---
 
 def test_generator_output_shape():
     """
@@ -65,7 +56,6 @@ def test_generator_output_shape():
     """
     batch_size = 2
     latent_dim = 64
-    
     z = torch.randn(batch_size, latent_dim)
     labels = torch.randint(0, 3, (batch_size,))
     
@@ -74,33 +64,24 @@ def test_generator_output_shape():
     
     assert output.shape == (batch_size, 1, 64, 64, 64)
 
-
-def test_generator_raises_error_on_wrong_input():
+def test_generator_input_validation_full_coverage():
     """
-    Verify that the Generator raises ValueError when input dimensions are incorrect.
+    Verify that the Generator enforces structural integrity for both latent and label inputs.
     
-    This tests the defensive programming checks implemented in the forward pass.
+    Ensuring strict dimensionality (2D for z, 1D for labels) prevents 
+    downstream matrix mismatch errors in the 3D convolution pipeline.
     """
-    G = CPUOptimizedGenerator3D()
-    wrong_z = torch.randn(2, 64, 1) 
-    labels = torch.randint(0, 3, (2,))
+    gen = CPUOptimizedGenerator3D()
     
-    with pytest.raises(ValueError):
-        G(wrong_z, labels)
+    # Case 1: Invalid latent dimensions (covers line 112)
+    with pytest.raises(ValueError, match="must be 2D"):
+        gen(torch.randn(1, 64, 1), torch.tensor([0]))
 
+    # Case 2: Invalid label dimensions (covers line 114)
+    with pytest.raises(ValueError, match="must be 1D"):
+        gen(torch.randn(1, 64), torch.tensor([[0]]))
 
-# --- TEST DISCRIMINATOR ---
-
-def test_discriminator_input_validation():
-    """
-    Verify that the Discriminator rejects non-5D volumetric data.
-    """
-    disc = CPUOptimizedDiscriminator3D()
-    x_bad = torch.randn(1, 1, 64, 64) 
-    labels = torch.tensor([0])
-    
-    with pytest.raises(ValueError, match="Discriminator input image must be 5D"):
-        disc(x_bad, labels)
+# --- DISCRIMINATOR TESTS ---
 
 def test_discriminator_output_shape():
     """
@@ -108,7 +89,6 @@ def test_discriminator_output_shape():
     """
     batch_size = 2
     input_shape = (64, 64, 64)
-    
     fake_img = torch.randn(batch_size, 1, *input_shape)
     labels = torch.randint(0, 3, (batch_size,))
     
@@ -117,17 +97,19 @@ def test_discriminator_output_shape():
     
     assert output.shape == (batch_size,)
 
-
-def test_discriminator_raises_error_on_wrong_input():
+def test_discriminator_input_validation_full_coverage():
     """
-    Verify that the Discriminator raises ValueError for inputs with missing dimensions.
+    Verify that the Discriminator rejects malformed image volumes or label tensors.
     
-    This ensures we don't accidentally pass 4D tensors (missing channel dim) 
-    which would cause silent broadcasting errors in convolutions.
+    Strict 5D validation ensures the Critic only processes volumetric data 
+    consistent with 3D medical imaging standards.
     """
-    D = CPUOptimizedDiscriminator3D()
-    wrong_img = torch.randn(2, 64, 64, 64) 
-    labels = torch.randint(0, 3, (2,))
+    disc = CPUOptimizedDiscriminator3D()
     
-    with pytest.raises(ValueError):
-        D(wrong_img, labels)
+    # Case 1: Invalid image dimensions (covers line 194)
+    with pytest.raises(ValueError, match="must be 5D"):
+        disc(torch.randn(1, 1, 64, 64), torch.tensor([0]))
+        
+    # Case 2: Invalid label dimensions (covers line 196)
+    with pytest.raises(ValueError, match="must be 1D"):
+        disc(torch.randn(1, 1, 64, 64, 64), torch.tensor([[0]]))
