@@ -6,48 +6,57 @@ Date: January 2026
 
 import sys
 import os
-
-# Add the project root directory to Python's search path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import pytest
 import torch
 import numpy as np
 import nibabel as nib
+
+# Add the project root directory to Python's search path
+# allowing imports from 'src' regardless of where the test is run.
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src.dataset import MRINiftiDataset
 
-# --- Creation of temporary data for tests ---
+# --- FIXTURES ---
 
 @pytest.fixture
 def mock_dataset_folder(tmp_path):
-    """Creates a temporary directory with dummy NIfTI files for standard testing."""
+    """
+    Create a temporary directory with dummy NIfTI files for standard testing.
+    This isolates the test environment from real data dependencies.
+    """
     class_dir = tmp_path / "AD"
     class_dir.mkdir()
     
-    # Create 2 fake patients
+    # Simulate 2 fake patients to verify iteration length
     for i in range(2):
         patient_dir = class_dir / f"Patient_{i:03d}"
         patient_dir.mkdir()
-        # Random 3D image
+        
+        # Random 3D image to simulate MRI data
         data = np.random.rand(64, 64, 64).astype(np.float32)
         img = nib.Nifti1Image(data, np.eye(4))
-        # Save with default file name
+        
+        # Save with the default expected filename
         nib.save(img, patient_dir / "MPRAGE_MNI_norm.nii.gz")
         
     return str(class_dir)
 
 @pytest.fixture
 def custom_file_folder(tmp_path):
-    """Creates a folder with different filenames to test the 'file_pattern' flexibility."""
+    """
+    Create a folder with non-standard filenames.
+    Used to verify the dataset's flexibility (modality-agnosticism).
+    """
     d = tmp_path / "T2_Images"
     d.mkdir()
     p = d / "Scan_01"
     p.mkdir()
     
-    # Fake image but with a different name
+    # Fake image with a custom extension/name
     data = np.random.rand(32, 32, 32).astype(np.float32)
     img = nib.Nifti1Image(data, np.eye(4))
-    nib.save(img, p / "brain_t2.nii") # <--- Custom name!
+    nib.save(img, p / "brain_t2.nii") 
     
     return str(d)
 
@@ -55,67 +64,61 @@ def custom_file_folder(tmp_path):
 
 def test_initialization_valid_path(mock_dataset_folder):
     """
-    GIVEN a valid folder with default files
-    WHEN MRINiftiDataset is initialized
-    THEN it should find the files and have correct length.
+    Verify that the dataset correctly locates and counts files in a standard structure.
     """
     dataset = MRINiftiDataset(class_dir=mock_dataset_folder, label=0)
     assert len(dataset) == 2
 
 def test_custom_file_pattern(custom_file_folder):
     """
-    GIVEN a folder with non-standard filenames (e.g. 'brain_t2.nii')
-    WHEN initialized with file_pattern='brain_t2.nii'
-    THEN it should find the files correctly.
-    (This proves the code is modality-agnostic)
+    Verify that the dataset can load files with custom patterns.
+    
+    This ensures the code is not hardcoded to a specific modality 
+    (e.g., capable of loading T2 or PET images if specified).
     """
     dataset = MRINiftiDataset(class_dir=custom_file_folder, label=1, file_pattern="brain_t2.nii")
     assert len(dataset) == 1
-    # Also verify it loads something
+    
     img, label = dataset[0]
     assert isinstance(img, torch.Tensor)
 
 def test_raises_error_on_missing_path():
     """
-    GIVEN a non-existent path
-    WHEN initialized
-    THEN it should raise FileNotFoundError (Defensive Programming).
+    Verify that initializing with a non-existent path raises FileNotFoundError.
+    This fulfills the defensive programming requirement.
     """
     with pytest.raises(FileNotFoundError):
-        MRINiftiDataset(class_dir="percorso/inesistente/assurdo", label=0)
+        MRINiftiDataset(class_dir="invalid/path/test", label=0)
 
-def test_getitem_output_shape(mock_dataset_folder):
+def test_data_shape_consistency(mock_dataset_folder):
     """
-    GIVEN a dataset
-    WHEN getitem is called
-    THEN output tensor should have shape (1, 64, 64, 64).
+    Verify that the output tensor dimensions match the expected (1, D, H, W) format.
+    Consistency is critical for batching in the neural network.
     """
     dataset = MRINiftiDataset(class_dir=mock_dataset_folder, label=0)
     image, label = dataset[0]
+    
     # Check dimensions: (Channels, Depth, Height, Width)
     assert image.shape == (1, 64, 64, 64)
 
-def test_automatic_resizing(tmp_path):
+def test_preprocessing_resizing(tmp_path):
     """
-    GIVEN a dataset configured for 64x64x64
-    WHEN loading a huge image (e.g., 100x100x100)
-    THEN it should automatically resize it to (1, 64, 64, 64).
+    Verify that the dataset automatically resizes inputs of arbitrary sizes 
+    to the strictly defined target shape.
     """
-    # 1. Setup cartella e file gigante
     d = tmp_path / "ResizeTest"
     d.mkdir()
     p = d / "Patient_Big"
     p.mkdir()
     
-    # Creiamo un'immagine di dimensioni sbagliate (es. 100x100x100)
+    # Create a volume with mismatching dimensions (100x100x100) to test interpolation logic
     huge_data = np.random.rand(100, 100, 100).astype(np.float32)
     img = nib.Nifti1Image(huge_data, np.eye(4))
     nib.save(img, p / "MPRAGE_MNI_norm.nii.gz")
     
-    # 2. Inizializza Dataset
     dataset = MRINiftiDataset(class_dir=str(d), label=0, target_shape=(64, 64, 64))
     
-    # 3. Verifica
     image, _ = dataset[0]
-    # Se il ridimensionamento funziona, la shape deve essere 64, non 100!
+    
+    # The output must be resized to 64, proving that F.interpolate worked
     assert image.shape == (1, 64, 64, 64)
