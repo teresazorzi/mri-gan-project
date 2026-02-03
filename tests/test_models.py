@@ -21,15 +21,14 @@ def test_weights_initialization_logic():
     """
     Verify that the custom weights_init applies specific Gaussian distributions.
     
-    Correct initialization (Normal 0, 0.02) is critical for WGAN stability to 
-    prevent gradients from vanishing in the early stages of 3D convolution.
+    Validates DCGAN-standard initialization (Normal 0, 0.02) to ensure 
+    numerical stability in 3D convolutional layers.
     """
     model = CPUOptimizedGenerator3D(latent_dim=64)
     model.apply(weights_init)
     
     for m in model.modules():
         if isinstance(m, nn.ConvTranspose3d):
-            # DCGAN standard: weights must follow N(0, 0.02)
             assert torch.isclose(m.weight.std(), torch.tensor(0.02), atol=1e-2)
             break
 
@@ -37,8 +36,8 @@ def test_weights_init_with_bias():
     """
     Ensure weights_init correctly zeroes out biases when present.
     
-    This validates the logic for potential architecture variants where bias 
-    terms are enabled, ensuring a neutral starting point for optimization.
+    Validates that layers with bias terms start from a neutral state 
+    to facilitate initial optimization steps.
     """
     layer = nn.Conv3d(1, 1, 3, bias=True)
     layer.bias.data.fill_(5.0)
@@ -49,10 +48,10 @@ def test_weights_init_with_bias():
 
 def test_generator_output_shape():
     """
-    Verify that the Generator produces a 5D tensor with the correct target dimensions.
+    Verify the Generator produces a 5D tensor with correct target dimensions.
     
-    This ensures the output format (Batch, Channel, Depth, Height, Width) 
-    is compatible with the Discriminator and 3D plotting tools.
+    Validates the volumetric output format (Batch, Channel, Depth, Height, Width) 
+    required for 3D GAN processing.
     """
     batch_size = 2
     latent_dim = 64
@@ -66,18 +65,18 @@ def test_generator_output_shape():
 
 def test_generator_input_validation_full_coverage():
     """
-    Verify that the Generator enforces structural integrity for both latent and label inputs.
+    Verify the Generator enforces structural integrity for latent and label inputs.
     
-    Ensuring strict dimensionality (2D for z, 1D for labels) prevents 
-    downstream matrix mismatch errors in the 3D convolution pipeline.
+    Validates strict dimensionality checks to prevent matrix mismatch errors 
+    during conditional 3D synthesis.
     """
     gen = CPUOptimizedGenerator3D()
     
-    # Case 1: Invalid latent dimensions (covers line 112)
+    # Case 1: Invalid latent dimensions (2D expectation)
     with pytest.raises(ValueError, match="must be 2D"):
         gen(torch.randn(1, 64, 1), torch.tensor([0]))
 
-    # Case 2: Invalid label dimensions (covers line 114)
+    # Case 2: Invalid label dimensions (1D expectation)
     with pytest.raises(ValueError, match="must be 1D"):
         gen(torch.randn(1, 64), torch.tensor([[0]]))
 
@@ -101,15 +100,15 @@ def test_discriminator_input_validation_full_coverage():
     """
     Verify that the Discriminator rejects malformed image volumes or label tensors.
     
-    Strict 5D validation ensures the Critic only processes volumetric data 
-    consistent with 3D medical imaging standards.
+    Ensures the Critic only processes volumetric data consistent with 3D 
+    medical imaging standards.
     """
     disc = CPUOptimizedDiscriminator3D()
     
-    # Case 1: Invalid image dimensions (covers line 194)
+    # Case 1: Invalid image dimensions (5D expectation)
     with pytest.raises(ValueError, match="must be 5D"):
         disc(torch.randn(1, 1, 64, 64), torch.tensor([0]))
         
-    # Case 2: Invalid label dimensions (covers line 196)
+    # Case 2: Invalid label dimensions (1D expectation)
     with pytest.raises(ValueError, match="must be 1D"):
         disc(torch.randn(1, 1, 64, 64, 64), torch.tensor([[0]]))
