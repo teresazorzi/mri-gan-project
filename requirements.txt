@@ -1,11 +1,24 @@
-numpy<2.0
-pandas
-matplotlib
-seaborn
-scipy
-scikit-learn
-scikit-image
-nibabel
-torch
-pytest
-coverage
+# --- Core Scientific Stack ---
+numpy==1.26.4
+pandas==2.3.3
+scipy==1.16.3
+
+# --- Deep Learning Framework ---
+torch==2.10.0
+torchvision==0.25.0
+
+# --- Medical Imaging & Image Processing ---
+nibabel==5.3.3
+scikit-image==0.25.2
+
+# --- Visualization ---
+matplotlib==3.10.7
+seaborn==0.13.2
+
+# --- Machine Learning Utilities ---
+scikit-learn==1.7.2
+
+# --- Testing & Quality Assurance ---
+pytest==8.4.2
+pytest-cov==7.0.0
+coverage==7.13.2
