@@ -18,6 +18,9 @@ seaborn==0.13.2
 # --- Machine Learning Utilities ---
 scikit-learn==1.7.2
 
+# --- Configuration ---
+PyYAML==6.0.1
+
 # --- Testing & Quality Assurance ---
 pytest==8.4.2
 pytest-cov==7.0.0
