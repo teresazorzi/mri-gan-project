@@ -9,7 +9,6 @@ import torch
 import torch.autograd as autograd
 import matplotlib.pyplot as plt
 
-
 def compute_gradient_penalty(D, real_samples, fake_samples, labels, device):
     """
     Calculates the gradient penalty loss for WGAN-GP.
@@ -70,7 +69,6 @@ def compute_gradient_penalty(D, real_samples, fake_samples, labels, device):
     
     return gradient_penalty
 
-
 def save_fake_slice(generator, fixed_noise, fixed_labels, epoch, output_dir):
     """
     Generate a sample volume and save a 2D middle slice for visualization.
@@ -97,19 +95,24 @@ def save_fake_slice(generator, fixed_noise, fixed_labels, epoch, output_dir):
         fake_volumes = generator(fixed_noise, fixed_labels).cpu().numpy()
     generator.train()
 
-    # Extract the first volume from the batch -> Shape: (Channel, Depth, Height, Width)
-    vol = fake_volumes[0, 0, :, :, :]
+    # Extract the number of samples in the batch to determine how many subplots we need.
+    num_samples = fake_volumes.shape[0]
+    fig, axes = plt.subplots(1, num_samples, figsize=(4 * num_samples, 4))
 
-    # Select the middle slice along the depth axis (Coronal/Axial view depending on orientation).
-    mid_slice_idx = vol.shape[0] // 2
-    mid_slice = vol[mid_slice_idx, :, :]
+    if num_samples == 1:
+        axes = [axes]
 
-    # Plot and save
-    plt.figure(figsize=(5, 5))
-    plt.imshow(mid_slice, cmap='gray')
-    plt.title(f'Epoch {epoch}')
-    plt.axis('off')
+    for i in range(num_samples):
+        # Extract the i-th volume
+        vol = fake_volumes[i, 0, :, :, :]
+        # Select the middle slice along the depth axis (Coronal/Axial view depending on orientation).
+        mid_slice = vol[vol.shape[0] // 2, :, :]
+        
+        axes[i].imshow(mid_slice, cmap='gray')
+        axes[i].set_title(f'Class {fixed_labels[i].item()}')
+        axes[i].axis('off')
 
+    plt.tight_layout()
     filename = os.path.join(output_dir, f"epoch_{epoch}.png")
     plt.savefig(filename)
     plt.close()
