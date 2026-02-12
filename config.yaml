@@ -1,0 +1,24 @@
+# Configuration for 3D MRI GAN Training
+dataset:
+  data_root: "data"  
+  file_pattern: "MPRAGE_MNI_norm.nii.gz"
+  target_shape: [64, 64, 64]
+  num_workers: 0     
+
+model:
+  latent_dim: 64
+  ngf: 32            # Number of Generator filters
+  ndf: 32            # Number of Discriminator filters
+  num_classes: 3
+
+training:
+  epochs: 50
+  batch_size: 4
+  lr: 0.0002
+  n_critic: 5
+  lambda_gp: 10
+  device: "cuda"     # Automatically defaults to CPU if CUDA is not available
+  seed: 42           # Explicit seed for managing random elements
+
+output:
+  save_dir: "results"
