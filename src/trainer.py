@@ -14,7 +14,7 @@ class Trainer:
     Core engine for the WGAN-GP training process.
 
     This class manages the adversarial optimization loop, enforcing 
-    Lipschitz continuity via gradient penalty and handling model persistence.
+    Lipschitz continuity via gradient penalty.
     """
 
     def __init__(self, generator, discriminator, dataloader, device, config):
@@ -40,17 +40,16 @@ class Trainer:
         self.device = device
         self.config = config
 
-        # 10 is the standard penalty weight to maintain training stability
-        self.lambda_gp = 10  
-        self.n_critic = getattr(config, 'n_critic', 5)
+        self.lambda_gp = config.lambda_gp
+        self.n_critic = config.n_critic
 
-        # Adam optimizers with momentum (0.5, 0.9) optimized for GAN equilibrium
+        # Adam optimizers with momentum (0.5, 0.9) optimized for WGAN-GP equilibrium
         self.opt_G = optim.Adam(self.G.parameters(), lr=config.lr, betas=(0.5, 0.9))
         self.opt_D = optim.Adam(self.D.parameters(), lr=config.lr, betas=(0.5, 0.9))
 
         # Fixed noise ensures consistent progress tracking across epochs
-        self.fixed_noise = torch.randn(3, config.latent_dim).to(device)
-        self.fixed_labels = torch.tensor([0, 1, 2]).to(device)
+        self.fixed_noise = torch.randn(config.num_classes, config.latent_dim).to(device)
+        self.fixed_labels = torch.arange(config.num_classes).to(device)
 
         self.checkpoint_dir = os.path.join(config.save_dir, "checkpoints")
         self.images_dir = os.path.join(config.save_dir, "progress_images")
@@ -78,12 +77,12 @@ class Trainer:
                 labels = labels.to(self.device)
                 batch_size = real_imgs.size(0)
 
-                # --- Critic Training Phase ---
+                # 1. Train Discriminator
                 self.opt_D.zero_grad()
 
                 z = torch.randn(batch_size, self.config.latent_dim).to(self.device)
                 
-                # Detach prevents computing gradients for G during the Critic update
+                # Detach prevents computing gradients for G during the Discriminator update
                 fake_imgs = self.G(z, labels).detach()
 
                 d_real = self.D(real_imgs, labels).mean()
@@ -99,7 +98,7 @@ class Trainer:
                 d_loss.backward()
                 self.opt_D.step()
 
-                # --- Generator Training Phase ---
+                # 2. Train Generator
                 g_loss_val = 0.0  
 
                 if i % self.n_critic == 0:
