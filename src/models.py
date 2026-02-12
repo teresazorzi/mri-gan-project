@@ -8,53 +8,63 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def weights_init(m):
+def weights_init(module):
     """
     Custom weights initialization for Generator and Discriminator.
-    Follows DCGAN paper guidelines to prevent vanishing/exploding gradients.
+    
+    Follows DCGAN guidelines to prevent vanishing/exploding gradients.
+    This function is applied recursively to every layer in the network via .apply().
+    
+    It is designed to be 'selective': it only modifies layers with learnable 
+    parameters (weights and biases) and silently ignores all other layers or where 
+    parameters are disabled by the user (e.g., bias=False).
 
     Parameters
     ----------
-    m : nn.Module
+    module : nn.Module
         The layer being initialized.
     """
-    classname = m.__class__.__name__
+    classname = module.__class__.__name__
     
     # Initialize Conv layers with Normal(0, 0.02).
-    # This breaks symmetry without introducing large weights that would destabilize training.
+    # This breaks symmetry without introducing large weights.
     if 'Conv' in classname:
-        nn.init.normal_(m.weight.data, 0.0, 0.02)
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
+        if hasattr(module, 'weight') and module.weight is not None:
+            nn.init.normal_(module.weight.data, 0.0, 0.02)
+        if hasattr(module, 'bias') and module.bias is not None:
+            nn.init.constant_(module.bias.data, 0)
     
     # Initialize InstanceNorm: scale=1, bias=0.
     # This ensures the layer acts as an identity function at the start of training.
     elif 'InstanceNorm' in classname:
-        if m.weight is not None: 
-            nn.init.normal_(m.weight.data, 1.0, 0.02)
-        if m.bias is not None:
-            nn.init.constant_(m.bias.data, 0)
+        if hasattr(module, 'weight') and module.weight is not None:
+            nn.init.normal_(module.weight.data, 1.0, 0.02)
+        if hasattr(module, 'bias') and module.bias is not None:
+            nn.init.constant_(module.bias.data, 0)
+    
+    # All other layers (ReLU, Sequential, Dropout, etc.) are ignored.
+    # We do not raise errors because these layers do not have learnable parameters.
+    else:
+        pass
 
 class CPUOptimizedGenerator3D(nn.Module):
     """
-    3D Generator Network.
-    Takes a latent vector (z) and a class label, outputs a 3D MRI volume.
-    Designed with a smaller filter count (ngf=32) for CPU compatibility.
+    3D Generator Network for MRI volume synthesis.
     """
-    def __init__(self, latent_dim=64, num_classes=3, ngf=32, target_shape=(64, 64, 64)):
+    def __init__(self, latent_dim, num_classes, ngf, target_shape):
         """
         Initialize the Generator.
 
         Parameters
         ----------
-        latent_dim : int, optional
-            Dimension of the random noise vector (z) (default is 64).
-        num_classes : int, optional
-            Number of target classes (e.g. 3 for CN, LMCI, AD) (default is 3).
-        ngf : int, optional
-            Number of generator filters in the last conv layer (default is 32).
-        target_shape : tuple, optional
-            Expected output dimensions (D, H, W) (default is (64, 64, 64)).
+        latent_dim : int
+            Dimension of the random noise vector (z).
+        num_classes : int
+            Number of target classes for conditional generation.
+        ngf : int
+            Number of generator filters in the last conv layer.
+        target_shape : tuple
+            Expected output dimensions (D, H, W).
         """
         super().__init__()
         self.latent_dim = latent_dim
@@ -124,22 +134,21 @@ class CPUOptimizedGenerator3D(nn.Module):
 
 class CPUOptimizedDiscriminator3D(nn.Module):
     """
-    3D Discriminator Network (Critic).
-    Takes a 3D volume and a class label, outputs a scalar validity score.
+    3D Discriminator Network for MRI volume evaluation.
     Implements WGAN-GP logic (InstanceNorm, No Sigmoid).
     """
-    def __init__(self, num_classes=3, ndf=32, input_shape=(64, 64, 64)):
+    def __init__(self, num_classes, ndf, input_shape):
         """
         Initialize the Discriminator.
 
         Parameters
         ----------
-        num_classes : int, optional
-            Number of classes (e.g. 3) (default is 3).
-        ndf : int, optional
-            Number of Discriminator Filters in the first layer (default is 32).
-        input_shape : tuple, optional
-            Shape of input volume (D, H, W) (default is (64, 64, 64)).
+        num_classes : int
+            Number of classes.
+        ndf : int
+            Number of Discriminator Filters in the first layer.
+        input_shape : tuple
+            Shape of input volume (D, H, W).
         """
         super().__init__()
         self.input_shape = input_shape
@@ -187,7 +196,7 @@ class CPUOptimizedDiscriminator3D(nn.Module):
         torch.Tensor
             Validity scores (Batch,).
         """
-        # Prevent obscure runtime errors by enforcing strict shape requirements.
+        # Enforce strict shape requirements.
         if x.dim() != 5:
             raise ValueError(f"Discriminator input image must be 5D (Batch, Channel, D, H, W), got shape {x.shape}")
         if labels.dim() != 1:
