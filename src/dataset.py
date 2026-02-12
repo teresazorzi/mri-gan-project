@@ -9,8 +9,8 @@ import glob
 import numpy as np
 import nibabel as nib
 import torch
-import torch.nn.functional as F
 from torch.utils.data import Dataset
+import scipy.ndimage
 
 
 class MRINiftiDataset(Dataset):
@@ -21,38 +21,42 @@ class MRINiftiDataset(Dataset):
     and spatially resizes them to a fixed target shape suitable for the GAN.
     """
 
-    def __init__(self, class_dir, label, target_shape=(64, 64, 64), file_pattern="MPRAGE_MNI_norm.nii.gz"):
+    def __init__(self, root_dir, label, file_pattern="*.nii.gz", target_shape=None):
         """
-        Initialize the MRI Dataset.
+        Initialize the MRI Dataset by scanning and sorting available NIfTI files.
 
         Parameters
         ----------
-        class_dir : str
-            Path to the folder containing the specific class images.
+        root_dir : str
+            Path to the directory containing the MRI NIfTI files for a specific class.
         label : int
-            Integer label associated with this class (e.g., 0 for CN, 1 for AD).
-        target_shape : tuple, optional
-            Desired output shape (Depth, Height, Width) (default is (64, 64, 64)).
+            Numerical class label associated with the data (e.g., 0 for AD, 1 for CN, 2 for LMCI).
         file_pattern : str, optional
-            Filename pattern to search for (default is 'MPRAGE_MNI_norm.nii.gz').
-            Can be changed to '*.nii' or specific filenames for other datasets.
+            A glob-style string pattern used to filter files within `root_dir`.
+            Defaults to "*.nii.gz".
+        target_shape : tuple of int, optional
+            The desired output dimensions (Depth, Height, Width) for 3D resampling.
 
         Raises
         ------
         FileNotFoundError
-            If the provided `class_dir` does not exist.
+            If the specified `root_dir` does not exist on the filesystem.
         """
-        if not os.path.exists(class_dir):
-            raise FileNotFoundError(f"The directory '{class_dir}' does not exist. Please check the path.")
+        if not os.path.exists(root_dir):
+            raise FileNotFoundError(f"The directory '{root_dir}' does not exist. Please check the path.")
 
+        self.root_dir = root_dir
         self.label = label
         self.target_shape = target_shape
 
-        # Recursively search for Nifti files to handle complex folder structures.
-        self.file_list = glob.glob(os.path.join(class_dir, "**", file_pattern), recursive=True)
+        # Build path search string
+        search_path = os.path.join(root_dir, file_pattern)
 
+        # Recursively search for Nifti files.
+        self.file_list = sorted(glob.glob(search_path, recursive=True))
+        
         if len(self.file_list) == 0:
-            print(f"Warning: No files matching '{file_pattern}' found in {class_dir}")
+            print(f"Warning: No files found in {search_path}")
 
     def __len__(self):
         """
@@ -67,57 +71,62 @@ class MRINiftiDataset(Dataset):
 
     def __getitem__(self, idx):
         """
-        Load, normalize, and resize the MRI volume at the given index.
+        Load, normalize, and resize the MRI volume.
+
+        The method handles the full preprocessing pipeline: loading the NIfTI file, applying spatial resampling (interpolation),
+        and performing intensity normalization to the [-1, 1] range.
 
         Parameters
         ----------
         idx : int
-            Index of the sample to retrieve.
+            Index of the sample to retrieve from the sorted file list.
 
         Returns
         -------
-        tuple
-            A tuple containing:
-            - torch.Tensor: The preprocessed 3D image of shape (1, D, H, W).
-            - torch.Tensor: The class label.
+        img_tensor : torch.Tensor
+            The preprocessed 3D image tensor with shape (1, D, H, W).
+        label_tensor : torch.Tensor
+            The class label as a long integer tensor.
 
-        Notes
-        -----
-        If a file is corrupted or cannot be loaded, a dummy zero-tensor is returned
-        to prevent the entire training loop from crashing.
+        Raises
+        ------
+        IOError
+            If the NIfTI file is corrupted, missing, or cannot be parsed by nibabel.
+        RuntimeError
+            If resampling fails due to incompatible dimensions.
         """
+
+        img_path = self.file_list[idx]
         try:
-            img_path = self.file_list[idx]
             img = nib.load(img_path)
-            data = img.get_fdata().astype(np.float32)
-
-            # Robust Min-Max Normalization to [0, 1].
-            # This standardizes intensity ranges across different patients/scanners.
-            mi, ma = data.min(), data.max()
-
-            # Prevent division by zero if the image is flat/empty.
-            if ma - mi > 1e-8:
-                data = (data - mi) / (ma - mi + 1e-8)
-            else:
-                # Handle corrupted/empty scans safely by returning a zero volume.
-                data = np.zeros_like(data)
-
-            # Rescale to [-1, 1].
-            # This matches the Tanh output range of the Generator, critical for WGAN stability.
-            data = (data * 2) - 1
-
-            # Convert to Tensor and add Batch/Channel dimensions for interpolation.
-            # Input to F.interpolate must be (Batch, Channel, D, H, W).
-            tensor = torch.from_numpy(data).unsqueeze(0).unsqueeze(0)
-
-            # Resize to target shape.
-            # Ensures all inputs have consistent dimensions for the neural network.
-            tensor = F.interpolate(tensor, size=self.target_shape, mode='trilinear', align_corners=False)
-
-            # Return tensor: remove Batch dim -> (Channel, D, H, W).
-            return tensor.squeeze(0), torch.tensor(self.label, dtype=torch.long)
-
+            img_data = img.get_fdata().astype(np.float32)
         except Exception as e:
-            # Log the error but continue execution (Fault Tolerance).
-            print(f"Error loading file {self.file_list[idx]}: {e}")
-            return torch.zeros((1, *self.target_shape)), torch.tensor(self.label, dtype=torch.long)
+            # Handle corrupted files
+            raise IOError(f"Error loading file {img_path}: {e}")
+
+        # 3. Resize (if target_shape is provided)
+        if self.target_shape is not None and img_data.shape != self.target_shape:
+            zoom_factors = [t / s for t, s in zip(self.target_shape, img_data.shape)]
+            img_data = scipy.ndimage.zoom(img_data, zoom_factors, order=1) # Order 1 = Linear interpolation
+
+        # 4. Normalization to [-1, 1]
+        # GANs typically require input in range [-1, 1] or [0, 1]..
+        min_val = np.min(img_data)
+        max_val = np.max(img_data)
+
+        if max_val - min_val > 0:
+            img_data = (img_data - min_val) / (max_val - min_val) # [0, 1]
+            img_data = (img_data * 2) - 1 # [-1, 1]
+        else:
+            # Fallback for empty/constant images (shouldn't happen in MRI)
+            img_data = np.zeros_like(img_data)
+
+        # 5. Convert to Tensor
+        # PyTorch 3D Conv expects: (Channel, Depth, Height, Width)
+        # We add the Channel dimension using np.expand_dims
+        img_tensor = torch.from_numpy(np.expand_dims(img_data, axis=0))
+        
+        # 6. Label Tensor
+        label_tensor = torch.tensor(self.label, dtype=torch.long)
+
+        return img_tensor, label_tensor
