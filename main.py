@@ -18,7 +18,7 @@ import random
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.dataset import MRINiftiDataset
-from src.models import CPUOptimizedGenerator3D, CPUOptimizedDiscriminator3D
+from src.models import CPUOptimizedGenerator3D, CPUOptimizedDiscriminator3D, weights_init
 from src.trainer import Trainer
 
 def set_seed(seed):
@@ -125,9 +125,25 @@ def validate_config(config):
                 raise KeyError(f"Missing key '{key}' in section '{section}'")
 
     # Logical checks for values 
-    # Path Checks
+
+    # Dataset Checks
     if not os.path.exists(config['dataset']['data_root']):
         raise FileNotFoundError(f"Data root path does not exist: {config['dataset']['data_root']}")
+    if not isinstance(config['dataset']['file_pattern'], str) or not config['dataset']['file_pattern']:
+        raise ValueError("file_pattern must be a non-empty string") 
+    shape = config['dataset']['target_shape']
+    if not isinstance(shape, list) or len(shape) != 3:
+        raise ValueError(f"target_shape must be a list of 3 integers (Depth, Height, Width), got {shape}")
+    if config['dataset']['num_workers'] < 0:
+        raise ValueError("num_workers must be >= 0")
+    
+    # Model Checks
+    model = config['model']
+    if model['latent_dim'] < 1: raise ValueError("Latent dimension must be >= 1")
+    if model['ngf'] < 1 or model['ndf'] < 1:
+        raise ValueError("Number of filters (ngf, ndf) must be >= 1")
+    if model['num_classes'] < 1:
+        raise ValueError("num_classes must be >= 1")
 
     # Training Checks
     train = config['training']
@@ -136,26 +152,17 @@ def validate_config(config):
     if train['lr'] <= 0: raise ValueError("Learning rate must be > 0")
     if train['n_critic'] < 1: raise ValueError("n_critic must be >= 1")
     if train['lambda_gp'] < 0: raise ValueError("lambda_gp must be >=0")
-    
-    # Device Check 
     valid_devices = ['cpu', 'cuda']
     if train['device'] not in valid_devices and 'cuda:' not in train['device']:
         raise ValueError(f"Invalid device '{train['device']}'. Must be one of {valid_devices} or 'cuda:id'")
-
-    # Model Checks
-    if config['model']['latent_dim'] < 1: raise ValueError("Latent dimension must be >= 1")
-    if config['model']['ngf'] < 1 or config['model']['ndf'] < 1:
-        raise ValueError("Number of filters (ngf, ndf) must be >= 1")
-
-    # Dataset Checks
-    shape = config['dataset']['target_shape']
-    if not isinstance(shape, list) or len(shape) != 3:
-        raise ValueError(f"target_shape must be a list of 3 integers (Depth, Height, Width), got {shape}")
-
+ 
     # Output Checks
     out = config['output']
     if out['sample_interval'] < 1: raise ValueError("Sample interval must be >= 1")
     if out['checkpoint_interval'] < 1: raise ValueError("Checkpoint interval must be >= 1")
+    if not isinstance(out['save_dir'], str) or not out['save_dir']:
+        raise ValueError("save_dir must be a valid directory path string")
+
 def main():
     """
     Main execution flow.
@@ -233,16 +240,26 @@ def main():
         num_workers=config['dataset']['num_workers']
     )
 
+    num_classes=config['model']['num_classes']
+    target_shape=tuple(config['dataset']['target_shape'])
+
     # --- 2. MODEL INITIALIZATION ---
     print("Initializing models...")
     generator = CPUOptimizedGenerator3D(
         latent_dim=config['model']['latent_dim'], 
+        num_classes=num_classes,
+        target_shape=target_shape,
         ngf=config['model']['ngf']
     ).to(device)
 
     discriminator = CPUOptimizedDiscriminator3D(
-        ndf=config['model']['ndf']
+        num_classes=num_classes,
+        ndf=config['model']['ndf'],
+        input_shape=target_shape
     ).to(device)
+
+    generator.apply(weights_init)
+    discriminator.apply(weights_init)
 
     # --- 3. TRAINING LOOP ---
     # Create a Namespace for Trainer compatibility
