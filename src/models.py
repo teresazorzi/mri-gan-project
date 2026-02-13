@@ -114,6 +114,11 @@ class CPUOptimizedGenerator3D(nn.Module):
         -------
         torch.Tensor
             Generated 3D volume (Batch, 1, D, H, W).
+        
+        Raises
+        ------
+        ValueError
+            If 'z' is not 2D or 'labels' is not 1D.
         """
         # Prevent obscure runtime errors by enforcing strict shape requirements early.
         if z.dim() != 2:
@@ -148,9 +153,25 @@ class CPUOptimizedDiscriminator3D(nn.Module):
         ndf : int
             Number of Discriminator Filters in the first layer.
         input_shape : tuple
-            Shape of input volume (D, H, W).
+            Shape of input volume (D, H, W). MUST be (64, 64, 64).
+
+        Raises
+        ------
+        ValueError
+            If input_shape is strictly not (64, 64, 64). 
+            The fixed 5-layer architecture mathematically requires this size 
+            to reduce dimensions to a scalar score.
         """
         super().__init__()
+
+        # --- ARCHITECTURE CONSTRAINT CHECK ---
+        expected_shape = (64, 64, 64)
+        if input_shape[-3:] != expected_shape:
+            raise ValueError(
+                f"Architecture Constraint: Input shape must be exactly {expected_shape}, "
+                f"got {input_shape}. \n"
+            )
+
         self.input_shape = input_shape
         
         # Project label embedding to match input image dimensions (D*H*W) for concatenation.
@@ -195,6 +216,11 @@ class CPUOptimizedDiscriminator3D(nn.Module):
         -------
         torch.Tensor
             Validity scores (Batch,).
+            
+        Raises
+        ------
+        ValueError
+            If 'x' is not 5D or 'labels' is not 1D.
         """
         # Enforce strict shape requirements.
         if x.dim() != 5:
