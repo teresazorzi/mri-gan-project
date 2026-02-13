@@ -81,6 +81,13 @@ def parse_arguments():
         default="config.yaml",
         help="Path to the YAML configuration file."
     )
+
+    parser.add_argument("--epochs", type=int, help="Override training epochs.")
+    parser.add_argument("--batch_size", type=int, help="Override batch size.")
+    parser.add_argument("--lr", type=float, help="Override learning rate.")
+    parser.add_argument("--device", type=str, help="Override device (cpu/cuda).")
+    parser.add_argument("--data_root", type=str, help="Override dataset root path.")
+   
     return parser.parse_args()
 
 def validate_config(config):
@@ -118,14 +125,12 @@ def validate_config(config):
     # check for required sections and keys
     for section, keys in required_params.items():
         if section not in config:
-            raise KeyError(f"Configuration file is missing required section: '{section}'")
-        
+            raise KeyError(f"Configuration file is missing required section: '{section}'")        
         for key in keys:
             if key not in config[section]:
                 raise KeyError(f"Missing key '{key}' in section '{section}'")
 
     # Logical checks for values 
-
     # Dataset Checks
     if not os.path.exists(config['dataset']['data_root']):
         raise FileNotFoundError(f"Data root path does not exist: {config['dataset']['data_root']}")
@@ -185,6 +190,11 @@ def main():
     # Parse and Load
     args = parse_arguments()
     config = load_config(args.config)
+    if args.epochs:     config['training']['epochs'] = args.epochs
+    if args.batch_size: config['training']['batch_size'] = args.batch_size
+    if args.lr:         config['training']['lr'] = args.lr
+    if args.device:     config['training']['device'] = args.device
+    if args.data_root:  config['dataset']['data_root'] = args.data_root
 
     # Perform validation checks on the configuration parameters
     validate_config(config)
@@ -199,6 +209,8 @@ def main():
 
     data_root = config['dataset']['data_root']
     device = torch.device(config['training']['device'] if torch.cuda.is_available() else "cpu")
+    target_shape = tuple(config['dataset']['target_shape'])
+    num_classes = config['model']['num_classes']
 
     print(f"\n{'='*50}")
     print(f"MRI GAN TRAINING LAUNCHER")
@@ -206,39 +218,35 @@ def main():
     print(f"Config File  : {args.config}")
     print(f"Data Root    : {data_root}")
     print(f"Device       : {device}")
+    print(f"Epochs       : {config['training']['epochs']}") 
+    print(f"Batch Size   : {config['training']['batch_size']}")
     print(f"Seed         : {config['training']['seed']}")
     print(f"{'='*50}\n")
 
     # --- 1. DATASET SETUP ---
     print("Loading datasets...")
     try:
-        file_pattern = config['dataset']['file_pattern']
-        target_shape = tuple(config['dataset']['target_shape'])
-        expected_num_classes = config['model']['num_classes']
-
         class_folders = sorted([
             d for d in os.listdir(data_root) 
             if os.path.isdir(os.path.join(data_root, d))
         ])
 
         # check that the number of class folders matches the expected number of classes
-        if len(class_folders) != expected_num_classes:
+        if len(class_folders) != num_classes:
             raise ValueError(
-                f"CONFIG MISMATCH: 'num_classes' in config is {expected_num_classes}, "
+                f"CONFIG MISMATCH: 'num_classes' in config is {num_classes}, "
                 f"but found {len(class_folders)} subfolders in '{data_root}': {class_folders}.\n"
                 f"Check your config.yaml file or the folder structure."
             )
         
         print(f"Class mapping: { {i: name for i, name in enumerate(class_folders)} }")
+        
         datasets = []
-
-        for label_idx, class_name in enumerate(class_folders):
-            folder_path = os.path.join(data_root, class_name)
-            
+        for label_idx, class_name in enumerate(class_folders): 
             ds = MRINiftiDataset(
-                root_dir=folder_path, 
+                root_dir=os.path.join(data_root, class_name) , 
                 label=label_idx, 
-                file_pattern=file_pattern, 
+                file_pattern=config['dataset']['file_pattern'], 
                 target_shape=target_shape
             )
             
@@ -264,9 +272,6 @@ def main():
         shuffle=True,
         num_workers=config['dataset']['num_workers']
     )
-
-    num_classes=config['model']['num_classes']
-    target_shape=tuple(config['dataset']['target_shape'])
 
     # --- 2. MODEL INITIALIZATION ---
     print("Initializing models...")
