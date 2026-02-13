@@ -16,16 +16,18 @@
 
 ## Project Overview
 
-This repository contains a PyTorch-based toolkit for generating, manipulating, and analyzing 3D medical images. It implements a **3D Generative Adversarial Network (GAN)** designed to synthesize high-resolution structural MRI brain volumes.
+This repository contains a PyTorch-based toolkit for generating, manipulating, and analyzing 3D medical images. It implements a **Conditional Wasserstein 3D Generative Adversarial Network (WGAN-GP)** designed to synthesize high-resolution structural MRI brain volumes.
 
-The project focuses on generating synthetic data for different stages of Alzheimer's Disease:
+The project focuses on generating synthetic data for different stages of Alzheimer's Disease. It automatically detects classes based on the directory structure of the dataset, allowing for flexible training on different medical imaging tasks.
+
+**Classes Example:**
 - **AD**: Alzheimer's Disease
 - **LMCI**: Late Mild Cognitive Impairment
 - **CN**: Cognitively Normal
 
 **Key Features:**
-- **Full 3D Synthesis:** Generates volumetric data (64x64x64), not just 2D slices.
-- **WGAN Training Loop:** Uses Wasserstein Loss for robust convergence on CPU/Entry-level GPUs.
+- **Full 3D Synthesis:** Generates volumetric data.
+- **WGAN Training Loop:** Uses Wasserstein Loss Gradient Penalty (WGAN-GP) for robust convergence.
 - **NIfTI Support:** Native handling of `.nii.gz` medical formats.
 - **Augmentation:** Aims to improve classification performance on small medical datasets.
 
@@ -51,7 +53,8 @@ The project focuses on generating synthetic data for different stages of Alzheim
     * `matplotlib==3.10.7`
     * `pytest==8.4.2`
     * `pytest-cov==7.0.0`
-
+    * `PyYAML==6.0.1`
+  
 ## Dataset & Preprocessing
 
 The model is designed to work with **T1-weighted MPRAGE sequences** (originally sourced from the IDA by LONI database).
@@ -71,7 +74,7 @@ All training images must undergo the following standardized workflow before bein
 
 ### Data Directory Structure
 
-To train the model, organize your pre-processed data as follows:
+To train the model, organize your pre-processed NIfTI files in the `data/` folder.
 ```
 data/
 ├── AD/                          # Alzheimer's Disease (Label 0)
@@ -82,9 +85,31 @@ data/
 │   ├── Patient_002/
 │   │   └── MPRAGE_MNI_norm.nii.gz
 │   └── ...
-└── LMCI/                        # Late Mild Cognitive Impairment (Label 2)
-    └── ...
+├── LMCI/                        # Late Mild Cognitive Impairment (Label 2)
+│   └── ...
+...                        
+└──...                       
 ```
+The system automatically detects classes based on subfolder names (alphabetical order):
+
+**Class example:**
+- `data/AD/subject01.nii.gz` -> Label 0
+- `data/CN/subject02.nii.gz` -> Label 1
+- `data/LMCI/subject03.nii.gz` -> Label 2
+
+## Parameters Configuration
+
+The training configuration is managed via:
+1.  **Primary Source:** A `config.yaml` file defines all default hyperparameters and paths.
+2.  **CLI Overrides:** Specific parameters can be overwritten directly from the command line for quick experimentation (see [Usage](#usage)).
+
+**Key Configuration Groups in `config.yaml`:**
+* **Dataset**: `data_root`, `target_shape`, `num_workers`.
+* **Model**: `latent_dim`, `num_classes`, `ngf`/`ndf`.
+* **Training**: `epochs`, `batch_size`, `lr`, `n_critic`, `lambda_gp`, `device`.
+* **Output**: `save_dir`, `sample_interval`.
+
+> **Note:** The `num_classes` parameter in `config.yaml` must match the exact number of class subfolders found in your `data_root`.
 
 ## Repository Structure
 
@@ -101,6 +126,7 @@ This repository contains the following folders and files:
 - **`results/`**: Destination folder for generated images, logs, and saved models (created automatically).
 - **`main.py`**: Main script for launching the training process via command line.
 - **`requirements.txt`**: Contains the list of dependencies required for the project.
+- **`config.yaml`**: Central configuration file defining hyperparameters, dataset paths, and model architecture settings.
 
 ## Scripts Overview
 
@@ -116,48 +142,38 @@ Manages the loading of medical data. It searches for files matching the specifie
 Orchestrates the training process. It handles the epoch loops, batch processing, Wasserstein loss calculation, and the alternating updates of Generator and Discriminator weights.
 
 ### `main.py`
-The entry point of the application. It parses command-line arguments to set hyperparameters (epochs, learning rate, batch size, file pattern) and initiates the training process without requiring code modifications.
+The entry point of the application. It loads the configuration from `config.yaml`, handles CLI overrides, and initiates the training process
 
 ## Usage
 
 The script `main.py` can be run from the command line with different configurations. Below are common usage examples.
 
-### 1️⃣ Train the Model
+### 1. Train the Model
 Use `main.py` to start the training process.
 
 **Standard run:**
+Run the training using the defaults defined in your YAML file:
 ```bash
-python main.py --data_root "./data"
+python main.py --config config.yaml
 ```
 
-**Advanced Configuration:**
+**Quick try:**
+You can override specific training parameters without editing the YAML file. Command-line arguments take precedence over the config file.
 ```bash
-python main.py \
-  --data_root "data" \
-  --file_pattern "mri.nii.gz" \
-  --epochs 50 \
-  --batch_size 4 \
-  --lr 0.0002 \
-  --n_critic 5 \
-  --save_dir "results" \
-  --latent_dim 64 \
-  --device "cuda"
+python main.py --epochs 100 --lr 0.0001 --device cuda
 ```
 
-**Available Arguments:**
-| Argument | Description | Default |
-| :--- | :--- | :--- |
-| `--data_root` | Path to the dataset root folder (must contain AD/CN/LMCI subfolders) | `data` |
-| `--save_dir` | Directory where results and checkpoints will be saved | `results` |
-| `--file_pattern`| Specific filename to search for (e.g., `mri.nii.gz`) | `MPRAGE_MNI_norm.nii.gz` |
-| `--epochs` | Total number of training epochs | `50` |
-| `--batch_size` | Number of volumes per batch (reduce if OOM error occurs) | `4` |
-| `--lr` | Learning rate for the optimizer | `0.0002` |
-| `--n_critic` | Number of Critic (Discriminator) updates per Generator update | `5` |
-| `--latent_dim` | Size of the latent noise vector (z) | `64` |
-| `--device` | Computation device (`cpu` or `cuda`) | `cuda (auto-detected)` |
+**Available CLI Arguments**
+| Argument | Description | Default (YAML) | Overrides YAML Key |
+| :--- | :--- | :--- | :--- |
+| `--config` | Path to the YAML configuration file | `config.yaml` | N/A |
+| `--epochs` | Total number of training epochs | `50` | `training.epochs` |
+| `--batch_size` | Number of volumes per batch | `4` | `training.batch_size` |
+| `--lr` | Learning rate for the optimizer | `0.0002` | `training.lr` |
+| `--device` | Computation device (`cpu` or `cuda`) | `cuda` | `training.device` |
+| `--data_root` | Path to the dataset root folder | `data` | `dataset.data_root` |
 
-### 2️⃣ Demo & Visualization
+### 2. Demo & Visualization
 
 You can generate synthetic brains using the trained model without running a full training loop.
 
@@ -169,7 +185,7 @@ You can generate synthetic brains using the trained model without running a full
 
 3. Run the cells to load the latest checkpoint and visualize the output.
 
-### 3️⃣ Training Outputs
+### 3. Training Outputs
 During training, the software will automatically generate inside the directory specified by`--save_dir` (default: `results`):
 
 - **Checkpoints**: Saved models (`.pth` files) in `checkpoints/` inside the specified save directory.
