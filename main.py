@@ -297,6 +297,7 @@ def main():
         lr=config['training']['lr'],
         epochs=config['training']['epochs'],
         latent_dim=config['model']['latent_dim'],
+        num_classes=num_classes,
         n_critic=config['training']['n_critic'],
         lambda_gp=config['training']['lambda_gp'],         
         save_dir=save_dir,
