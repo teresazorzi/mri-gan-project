@@ -2,7 +2,8 @@
 dataset:
   data_root: "data"  
   file_pattern: "MPRAGE_MNI_norm.nii.gz"
-  # Target shape for resizing (Depth, Height, Width)
+  # CRITICAL: Do not change Target shape. 
+  # The Discriminator architecture (5 layers) is hardcoded for 64x64x64.
   target_shape: [64, 64, 64]
   # Number of subprocesses for data loading (0 = main process)
   num_workers: 0     
