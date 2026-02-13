@@ -13,6 +13,26 @@ from torch.utils.data import Dataset
 import scipy.ndimage
 
 
+def find_mri_files(root_dir, file_pattern):
+    """
+    Search for NIfTI files and return a sorted list of absolute paths.
+
+    Parameters
+    ----------
+    root_dir : str
+        The base directory to search.
+    file_pattern : str
+        The glob pattern to match (e.g., "**/*.nii.gz").
+
+    Returns
+    -------
+    list of str
+        Sorted absolute paths to the found files.
+    """
+    search_path = os.path.join(root_dir, file_pattern)
+    
+    return sorted(glob.glob(search_path, recursive=True))
+
 class MRINiftiDataset(Dataset):
     """
     Custom Dataset for loading and preprocessing 3D MRI Nifti files.
@@ -53,7 +73,7 @@ class MRINiftiDataset(Dataset):
         search_path = os.path.join(root_dir, file_pattern)
 
         # Recursively search for Nifti files.
-        self.file_list = sorted(glob.glob(search_path, recursive=True))
+        self.file_list = find_mri_files(root_dir, file_pattern)
         
         if len(self.file_list) == 0:
             print(f"Warning: No files found in {search_path}")
