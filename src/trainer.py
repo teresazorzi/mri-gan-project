@@ -118,19 +118,23 @@ class Trainer:
                     print(f"[Epoch {epoch+1}/{self.config.epochs}] [Batch {i}] "
                           f"[D loss: {d_loss.item():.4f}] [G loss: {g_loss_val:.4f}]")
 
-            # --- Periodic Synchronization and Persistence ---
-            try:
-                save_fake_slice(
-                    self.G, self.fixed_noise, self.fixed_labels, 
-                    epoch + 1, output_dir=self.images_dir
-                )
-            except Exception as e:
-                # Prevent I/O failures from interrupting the scientific computation
-                print(f"Warning: Progress visualization failed: {e}")
+            # --- Periodic Visualization & Checkpointing ---
+            # 1. Visualization (Progress Images)
+            if (epoch + 1) % self.config.sample_interval == 0:
+                try:
+                    save_fake_slice(
+                        self.G, self.fixed_noise, self.fixed_labels, 
+                        epoch + 1, output_dir=self.images_dir
+                    )
+                except Exception as e:
+                    # Prevent I/O failures from interrupting the scientific computation
+                    print(f"Warning: Progress visualization failed: {e}")
 
-            if (epoch + 1) % 10 == 0:
-                torch.save(
-                    self.G.state_dict(), 
-                    os.path.join(self.checkpoint_dir, f"generator_epoch_{epoch+1}.pth")
-                )
+            # 2. Model Checkpointing
+            if (epoch + 1) % self.config.checkpoint_interval == 0:
+                gen_path = os.path.join(self.checkpoint_dir, f"generator_epoch_{epoch+1}.pth")
+                disc_path = os.path.join(self.checkpoint_dir, f"discriminator_epoch_{epoch+1}.pth")
+                
+                torch.save(self.G.state_dict(), gen_path)
+                torch.save(self.D.state_dict(), disc_path)
                 print(f"System checkpoint persisted at epoch {epoch+1}")
