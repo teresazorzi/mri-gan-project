@@ -214,24 +214,49 @@ def main():
     try:
         file_pattern = config['dataset']['file_pattern']
         target_shape = tuple(config['dataset']['target_shape'])
-        # Initialize specific class datasets using the flexible file pattern.
-        # This makes the code usable for T1, T2, or other registered modalities.
-        ds_ad = MRINiftiDataset(os.path.join(data_root, 'AD'), label=0, file_pattern=file_pattern, target_shape=target_shape)
-        ds_cn = MRINiftiDataset(os.path.join(data_root, 'CN'), label=1, file_pattern=file_pattern, target_shape=target_shape)
-        ds_lmci = MRINiftiDataset(os.path.join(data_root, 'LMCI'), label=2, file_pattern=file_pattern, target_shape=target_shape)
+        expected_num_classes = config['model']['num_classes']
 
-        full_dataset = ConcatDataset([ds_ad, ds_cn, ds_lmci])
+        class_folders = sorted([
+            d for d in os.listdir(data_root) 
+            if os.path.isdir(os.path.join(data_root, d))
+        ])
 
-        # Verification step: ensure data was actually loaded.
-        if len(full_dataset) == 0:
-            raise RuntimeError(f"No files found matching '{file_pattern}' in {data_root}. "
-                               f"Please check your data directory structure.")
+        # check that the number of class folders matches the expected number of classes
+        if len(class_folders) != expected_num_classes:
+            raise ValueError(
+                f"CONFIG MISMATCH: 'num_classes' in config is {expected_num_classes}, "
+                f"but found {len(class_folders)} subfolders in '{data_root}': {class_folders}.\n"
+                f"Check your config.yaml file or the folder structure."
+            )
+        
+        print(f"Class mapping: { {i: name for i, name in enumerate(class_folders)} }")
+        datasets = []
 
-        print(f"Total images found: {len(full_dataset)}")
+        for label_idx, class_name in enumerate(class_folders):
+            folder_path = os.path.join(data_root, class_name)
+            
+            ds = MRINiftiDataset(
+                root_dir=folder_path, 
+                label=label_idx, 
+                file_pattern=file_pattern, 
+                target_shape=target_shape
+            )
+            
+            if len(ds) == 0:
+                print(f"WARNING: Dataset for class '{class_name}' is empty. Ignored.")
+            else:
+                print(f" - Loaded Class '{class_name}' (Label {label_idx}): {len(ds)} images")
+                datasets.append(ds)
+
+        if not datasets:
+             raise RuntimeError("No dataset loaded. Unable to start training.")
+
+        full_dataset = ConcatDataset(datasets)
+        print(f"Total training images: {len(full_dataset)}")
 
     except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
-        return  
+        print(f"\nCRITICAL ERROR: {e}")
+        return
 
     dataloader = DataLoader(
         full_dataset,
