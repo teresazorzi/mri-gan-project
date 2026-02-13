@@ -71,6 +71,7 @@ All training images must undergo the following standardized workflow before bein
 4. **Bias Correction**: N4 Bias-Field Correction.
 5. **Spatial Normalization**: Registration to the MNI152 template.
 6. **Intensity Normalization**: Scaled to interval `[-1, 1]`.
+7. **Resizing**: Downsampling/Padding to strictly **64x64x64** voxels.
 
 ### Data Directory Structure
 
@@ -104,7 +105,7 @@ The training configuration is managed via:
 2.  **CLI Overrides:** Specific parameters can be overwritten directly from the command line for quick experimentation (see [Usage](#usage)).
 
 **Key Configuration Groups in `config.yaml`:**
-* **Dataset**: `data_root`, `target_shape`, `num_workers`.
+* **Dataset**: `data_root`, `target_shape` (Must be set to 64 due to architecture constraints), `num_workers`.
 * **Model**: `latent_dim`, `num_classes`, `ngf`/`ndf`.
 * **Training**: `epochs`, `batch_size`, `lr`, `n_critic`, `lambda_gp`, `device`.
 * **Output**: `save_dir`, `sample_interval`.
