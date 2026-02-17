@@ -10,96 +10,145 @@ import pytest
 import subprocess
 import numpy as np
 import nibabel as nib
+import yaml
 
+# --- FIXTURES ---
 
 @pytest.fixture
-def temp_data_structure(tmp_path):
+def integration_env(tmp_path):
     """
-    Create a temporary valid dataset structure (AD, CN, LMCI) for integration testing.
+    Setup a complete environment for integration testing.
 
     Parameters
     ----------
     tmp_path : pathlib.Path
-        Pytest fixture providing a temporary directory unique to the test invocation.
+        Pytest fixture providing a temporary directory unique to the test.
 
     Returns
     -------
-    str
-        The absolute path to the temporary data root directory.
+    tuple
+        (config_path, save_dir) - Paths to the generated config and output folder.
     """
-    root_dir = tmp_path / "data"
-    root_dir.mkdir()
+
+    # 1. Create Mock Dataset (2 classes: AD and CN)
+    data_root = tmp_path / "mock_data"
+    for cls in ["AD", "CN"]:
+        cls_dir = data_root / cls
+        cls_dir.mkdir(parents=True)
+        # Create a 64x64x64 NIfTI
+        img_data = np.random.rand(64, 64, 64).astype(np.float32)
+        img = nib.Nifti1Image(img_data, np.eye(4))
+        nib.save(img, str(cls_dir / "test_scan.nii.gz"))
+
+    # 2. Define Output Directory
+    save_dir = tmp_path / "output"
+    save_dir.mkdir()
+
+    # 3. Create Mock Config
+    config = {
+        'dataset': {
+            'data_root': str(data_root),
+            'file_pattern': 'test_scan.nii.gz',
+            'target_shape': [64, 64, 64],
+            'num_workers': 0
+        },
+        'model': {
+            'latent_dim': 4,
+            'ngf': 2,
+            'ndf': 2,
+            'num_classes': 2
+        },
+        'training': {
+            'epochs': 1,
+            'batch_size': 1,
+            'lr': 0.0002,
+            'n_critic': 1,
+            'lambda_gp': 0.0,
+            'device': 'cpu',
+            'seed': 42
+        },
+        'output': {
+            'save_dir': str(save_dir),
+            'sample_interval': 1,
+            'checkpoint_interval': 1
+        }
+    }
     
-    classes = ["AD", "CN", "LMCI"]
-    for cls in classes:
-        cls_dir = root_dir / cls
-        cls_dir.mkdir()
+    config_path = tmp_path / "test_config.yaml"
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f)
         
-        patient_dir = cls_dir / "Patient_001"
-        patient_dir.mkdir()
-        
-        # Create a fake 64x64x64 Nifti image (random noise)
-        data = np.random.rand(64, 64, 64).astype(np.float32)
-        img = nib.Nifti1Image(data, np.eye(4))
-        nib.save(img, patient_dir / "mri.nii.gz")
-        
-    return str(root_dir)
+    return str(config_path), str(save_dir)
 
+# --- INTEGRATION TESTS ---
 
-def test_main_execution_cli(temp_data_structure, tmp_path):
+def test_main_cli_successful_run(integration_env):
+    """Verify that the main script executes without errors using a valid configuration.
+
+    GIVEN: A valid configuration file and mock NIfTI dataset.
+    WHEN: The main.py script is executed via CLI.
+    THEN: The process exit code is 0 (Success).
     """
-    Test the full execution of main.py via Command Line Interface (CLI).
-    
-    This verifies that the script runs from start to finish (exit code 0)
-    given valid arguments, effectively acting as an integration test.
-
-    Parameters
-    ----------
-    temp_data_structure : str
-        Path to the temporary data root created by the fixture.
-    tmp_path : pathlib.Path
-        Pytest fixture for creating temporary output directories.
-    """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, '..'))
+    config_path, _ = integration_env
+    project_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     main_script = os.path.join(project_root, 'main.py')
-    
-    if not os.path.exists(main_script):
-        pytest.fail(f"Could not find main.py at {main_script}")
 
-    temp_output_dir = tmp_path / "test_results"
+    cmd = [sys.executable, main_script, "--config", config_path]
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
-    # We use sys.executable to ensure we use the same Python environment 
-    # currently running the tests (avoids venv mismatch).
-    cmd = [
-        sys.executable, main_script,
-        "--data_root", temp_data_structure,
-        "--save_dir", str(temp_output_dir),
-        "--file_pattern", "mri.nii.gz", 
-        "--epochs", "1",           
-        "--batch_size", "2",       
-        "--n_critic", "1",         
-        "--lr", "0.001",
-        "--latent_dim", "10",
-        "--device", "cpu",         # Force CPU to ensure stability in CI environments without GPUs
-        "--num_workers", "0"       # Avoids multiprocessing overhead/freezing on Windows
-    ]
+    assert result.returncode == 0, f"Main execution failed!\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}"
+
+def test_main_creates_checkpoints_directory(integration_env):
+    """Verify that the training generates the checkpoints directory.
+
+    GIVEN: A valid integration environment.
+    WHEN: The main.py script is executed successfully.
+    THEN: The 'checkpoints' folder is created within the save directory.
+    """
+    config_path, save_dir = integration_env
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    main_script = os.path.join(project_root, 'main.py')
+
+    subprocess.run([sys.executable, main_script, "--config", config_path], check=True)
+
+    ckpt_dir = os.path.join(save_dir, "checkpoints")
+    assert os.path.exists(ckpt_dir), f"Checkpoint directory not created at: {ckpt_dir}"
+
+def test_main_creates_samples_directory(integration_env):
+    """Verify that the training generates the progress images directory.
+
+    GIVEN: A valid integration environment.
+    WHEN: The main.py script is executed successfully.
+    THEN: The 'progress_images' folder is created within the save directory.
+    """
+    config_path, save_dir = integration_env
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    main_script = os.path.join(project_root, 'main.py')
+
+    subprocess.run([sys.executable, main_script, "--config", config_path], check=True)
     
-    print(f"Executing command: {' '.join(cmd)}")
+    imgs_dir = os.path.join(save_dir, "progress_images")
+    assert os.path.exists(imgs_dir), f"Progress images directory not created at: {imgs_dir}"
+
+def test_main_num_classes_mismatch_error(integration_env):
+    """Verify defensive check when folder structure doesn't match config.
+
+    GIVEN: A config expecting 3 classes but a dataset with only 2 folders.
+    WHEN: The main.py script attempts to load the dataset.
+    THEN: A specific 'CONFIG MISMATCH' error message is printed to output.
+    """
+    config_path, _ = integration_env
+    # Modify config to expect 3 classes
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    config['model']['num_classes'] = 3
+    with open(config_path, 'w') as f:
+        yaml.dump(config, f)
+
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    main_script = os.path.join(project_root, 'main.py')
+
+    result = subprocess.run([sys.executable, main_script, "--config", config_path], capture_output=True, text=True)
     
-    result = subprocess.run(
-        cmd, 
-        capture_output=True, 
-        text=True
-    )
-    
-    if result.returncode != 0:
-        print("\n--- STDOUT (Logs) ---")
-        print(result.stdout)
-        print("\n--- STDERR (Errors) ---")
-        print(result.stderr)
-        
-    assert result.returncode == 0, "main.py crashed! See STDERR above for details."
-    
-    # Verify that the script actually produced output, not just exited silently.
-    assert os.path.exists(temp_output_dir), "Output directory was not created."
+    assert "CONFIG MISMATCH" in result.stdout or "CONFIG MISMATCH" in result.stderr, \
+        "The script failed to detect the number of classes mismatch."
