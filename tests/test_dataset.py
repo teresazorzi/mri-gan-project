@@ -22,7 +22,7 @@ def mock_mri_root(tmp_path):
     Parameters
     ----------
     tmp_path : pathlib.Path
-        Pytest fixture providing a temporary directory unique to the test invocation.
+        Pytest fixture providing a temporary directory.
 
     Returns
     -------
