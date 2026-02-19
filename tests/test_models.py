@@ -56,7 +56,21 @@ def test_weights_init_modifies_conv_weights():
     weights_init(layer)
     assert torch.any(layer.weight != 0.0), "Conv3d weights were not modified by weights_init."
 
-def test_weights_init_safety_no_bias():
+def test_weights_init_does_not_crash_without_bias():
+    """Verify that weights_init does not raise errors when bias is absent.
+
+    GIVEN: A Conv3d layer initialized with bias=False.
+    WHEN: The weights_init function is applied.
+    THEN: No AttributeError is raised.
+    """
+    layer = nn.Conv3d(1, 10, 3, bias=False)
+    
+    try:
+        weights_init(layer)
+    except AttributeError as e:
+        pytest.fail(f"weights_init crashed on a layer with bias=False: {e}")
+
+def test_weights_init_leaves_missing_bias_as_none():
     """Verify that weights_init handles layers without bias attributes correctly.
 
     GIVEN: A Conv3d layer initialized with bias=False (bias attribute is None).
@@ -65,11 +79,7 @@ def test_weights_init_safety_no_bias():
     """
     layer = nn.Conv3d(1, 10, 3, bias=False)
     
-    try:
-        weights_init(layer)
-    except AttributeError as e:
-        pytest.fail(f"weights_init failed on a layer with bias=False: {e}")
-    
+    weights_init(layer)
     assert layer.bias is None, "Bias attribute should remain None."
 
 def test_weights_init_zeros_conv_bias():
